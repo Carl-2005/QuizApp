@@ -1,1005 +1,1169 @@
-// index.js
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { registerRootComponent } from 'expo';
-import { useEffect, useState } from 'react';
+import { Ionicons } from "@expo/vector-icons";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { NavigationContainer } from "@react-navigation/native";
+import { createContext, useContext, useEffect, useState } from "react";
 import {
-    Alert,
-    Dimensions,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-} from 'react-native';
+  Alert,
+  FlatList,
+  Modal,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
-// Questions Data
-const questions = [
+// Create Context for sharing quiz data between tabs
+const QuizContext = createContext();
+
+// Default quiz questions
+const defaultQuestions = [
   {
-    id: 1,
-    type: "multiple",
-    question: "What does CPU stand for?",
-    choices: {
-      A: "Central Process Unit",
-      B: "Central Processing Unit",
-      C: "Computer Personal Unit",
-      D: "Central Program Utility",
-    },
-    answer: "B",
+    id: "1",
+    question: "What is the capital of France?",
+    options: ["London", "Berlin", "Paris", "Madrid"],
+    correctAnswer: 2,
   },
   {
-    id: 2,
-    type: "multiple",
-    question: "Which of the following is a programming language?",
-    choices: {
-      A: "HTML",
-      B: "CSS",
-      C: "Python",
-      D: "HTTP",
-    },
-    answer: "C",
+    id: "2",
+    question: "Which planet is known as the Red Planet?",
+    options: ["Venus", "Mars", "Jupiter", "Saturn"],
+    correctAnswer: 1,
   },
   {
-    id: 3,
-    type: "multiple",
-    question: "What symbol is used for comments in Python?",
-    choices: {
-      A: "//",
-      B: "<!-- -->",
-      C: "#",
-      D: "/* */",
-    },
-    answer: "C",
-  },
-  {
-    id: 4,
-    type: "truefalse",
-    question: "Boolean data type stores true or false values.",
-    choices: {
-      A: "True",
-      B: "False",
-    },
-    answer: "A",
-  },
-  {
-    id: 5,
-    type: "multiple",
-    question: "What is the result of 2 + 3 * 2?",
-    choices: {
-      A: "10",
-      B: "7",
-      C: "12",
-      D: "8",
-    },
-    answer: "B",
-  },
-  {
-    id: 6,
-    type: "multiple",
-    question: "Which keyword defines a function in Python?",
-    choices: {
-      A: "func",
-      B: "function",
-      C: "define",
-      D: "def",
-    },
-    answer: "D",
-  },
-  {
-    id: 7,
-    type: "multiple",
-    question: "What does OOP stand for?",
-    choices: {
-      A: "Object Oriented Programming",
-      B: "Open Object Protocol",
-      C: "Operational Object Process",
-      D: "Ordered Output Program",
-    },
-    answer: "A",
-  },
-  {
-    id: 8,
-    type: "multiple",
-    question: "Which loop is guaranteed to execute at least once?",
-    choices: {
-      A: "for",
-      B: "while",
-      C: "do-while",
-      D: "foreach",
-    },
-    answer: "C",
-  },
-  {
-    id: 9,
-    type: "multiple",
-    question: "Which symbol is used for equality comparison in most languages?",
-    choices: {
-      A: "=",
-      B: "==",
-      C: "===",
-      D: "!=",
-    },
-    answer: "B",
-  },
-  {
-    id: 10,
-    type: "multiple",
-    question: "What does IDE stand for?",
-    choices: {
-      A: "Integrated Development Environment",
-      B: "Internal Design Engine",
-      C: "Integrated Debug Editor",
-      D: "Independent Development Environment",
-    },
-    answer: "A",
-  },
-  {
-    id: 11,
-    type: "checkbox",
-    question: "Which data structures use FIFO and LIFO? (Select all that apply)",
-    choices: {
-      A: "Stack",
-      B: "Queue",
-      C: "Array",
-      D: "Tree",
-    },
-    answer: ["A", "B"],
-  },
-  {
-    id: 12,
-    type: "multiple",
-    question: "Which keyword is used to create a class in Python?",
-    choices: {
-      A: "object",
-      B: "class",
-      C: "struct",
-      D: "define",
-    },
-    answer: "B",
-  },
-  {
-    id: 13,
-    type: "multiple",
-    question: "Which operator is used for logical AND?",
-    choices: {
-      A: "&",
-      B: "&&",
-      C: "|",
-      D: "!",
-    },
-    answer: "B",
+    id: "3",
+    question: "What is 2 + 2?",
+    options: ["3", "4", "5", "6"],
+    correctAnswer: 1,
   },
 ];
 
-// Home Screen Component
-const HomeScreen = ({ onStartQuiz, highScore }) => {
-  return (
-    <View style={styles.homeContainer}>
-      <View style={styles.heroSection}>
-        <Text style={styles.emoji}>🧠</Text>
-        <Text style={styles.title}>Programming Quiz</Text>
-        <Text style={styles.subtitle}>Test your coding knowledge!</Text>
-      </View>
-      
-      <View style={styles.statsCard}>
-        <Text style={styles.statsLabel}>🏆 Highest Score</Text>
-        <Text style={styles.statsValue}>
-          {highScore !== null ? `${highScore}/${questions.length}` : 'No attempts yet'}
-        </Text>
-        <Text style={styles.statsSubtext}>
-          {questions.length} Questions Available
-        </Text>
-      </View>
+// ==================== PREVIEW QUIZ TAB ====================
+function PreviewQuiz() {
+  const { questions, timerDuration } = useContext(QuizContext);
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [selectedAnswers, setSelectedAnswers] = useState({});
+  const [showResult, setShowResult] = useState(false);
+  const [score, setScore] = useState(0);
+  const [quizStarted, setQuizStarted] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(timerDuration);
+  const [autoSubmitFlag, setAutoSubmitFlag] = useState(false);
 
-      <TouchableOpacity style={styles.startButton} onPress={onStartQuiz}>
-        <Text style={styles.startButtonText}>Start Quiz</Text>
-        <Text style={styles.startButtonIcon}>→</Text>
-      </TouchableOpacity>
-
-      <View style={styles.infoSection}>
-        <View style={styles.infoItem}>
-          <Text style={styles.infoIcon}>📝</Text>
-          <Text style={styles.infoText}>Multiple Choice</Text>
-        </View>
-        <View style={styles.infoItem}>
-          <Text style={styles.infoIcon}>✓</Text>
-          <Text style={styles.infoText}>True/False</Text>
-        </View>
-        <View style={styles.infoItem}>
-          <Text style={styles.infoIcon}>☑️</Text>
-          <Text style={styles.infoText}>Multi-Select</Text>
-        </View>
-      </View>
-    </View>
-  );
-};
-
-// Quiz Screen Component
-const QuizScreen = ({ onFinish, onGoHome }) => {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [answers, setAnswers] = useState({});
-  const [selectedChoices, setSelectedChoices] = useState([]);
-  
-  const currentQuestion = questions[currentIndex];
-  const isCheckbox = currentQuestion.type === 'checkbox';
-  const progress = ((currentIndex + 1) / questions.length) * 100;
-
-  useEffect(() => {
-    if (answers[currentQuestion.id]) {
-      if (isCheckbox) {
-        setSelectedChoices(answers[currentQuestion.id]);
-      } else {
-        setSelectedChoices([answers[currentQuestion.id]]);
-      }
-    } else {
-      setSelectedChoices([]);
-    }
-  }, [currentIndex]);
-
-  const handleChoiceSelect = (choice) => {
-    if (isCheckbox) {
-      if (selectedChoices.includes(choice)) {
-        setSelectedChoices(selectedChoices.filter(c => c !== choice));
-      } else {
-        setSelectedChoices([...selectedChoices, choice]);
-      }
-    } else {
-      setSelectedChoices([choice]);
-    }
-  };
-
-  const saveAnswer = () => {
-    if (selectedChoices.length > 0) {
-      const answer = isCheckbox ? [...selectedChoices].sort() : selectedChoices[0];
-      setAnswers(prev => ({
-        ...prev,
-        [currentQuestion.id]: answer
-      }));
-    }
-  };
-
-  const handleNext = () => {
-    saveAnswer();
-    if (currentIndex < questions.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-    }
-  };
-
-  const handlePrevious = () => {
-    saveAnswer();
-    if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
-    }
-  };
-
-  const handleSubmit = () => {
-    saveAnswer();
-    
-    let score = 0;
-    const finalAnswers = {
-      ...answers,
-      [currentQuestion.id]: isCheckbox ? [...selectedChoices].sort() : selectedChoices[0]
-    };
-
-    questions.forEach(q => {
-      const userAnswer = finalAnswers[q.id];
-      if (q.type === 'checkbox') {
-        if (Array.isArray(userAnswer) && Array.isArray(q.answer)) {
-          const sortedUser = [...userAnswer].sort();
-          const sortedCorrect = [...q.answer].sort();
-          if (JSON.stringify(sortedUser) === JSON.stringify(sortedCorrect)) {
-            score++;
-          }
-        }
-      } else {
-        if (userAnswer === q.answer) {
-          score++;
-        }
+  const calculateScore = () => {
+    let correctCount = 0;
+    questions.forEach((q) => {
+      if (selectedAnswers[q.id] === q.correctAnswer) {
+        correctCount++;
       }
     });
-
-    onFinish(score, finalAnswers);
+    setScore(correctCount);
+    setShowResult(true);
+    setQuizStarted(false);
   };
 
-  const isLastQuestion = currentIndex === questions.length - 1;
-  const answeredCount = Object.keys(answers).length + 
-    (selectedChoices.length > 0 && !answers[currentQuestion.id] ? 1 : 0);
-
-  return (
-    <SafeAreaView style={styles.quizContainer}>
-      <View style={styles.quizHeader}>
-        <TouchableOpacity onPress={onGoHome} style={styles.backButton}>
-          <Text style={styles.backButtonText}>✕</Text>
-        </TouchableOpacity>
-        <Text style={styles.questionCounter}>
-          Question {currentIndex + 1}/{questions.length}
-        </Text>
-        <Text style={styles.answeredCounter}>✓ {answeredCount}</Text>
-      </View>
-
-      <View style={styles.progressContainer}>
-        <View style={[styles.progressBar, { width: `${progress}%` }]} />
-      </View>
-
-      <ScrollView style={styles.questionContainer} showsVerticalScrollIndicator={false}>
-        <View style={styles.typeBadge}>
-          <Text style={styles.typeBadgeText}>
-            {currentQuestion.type === 'checkbox' ? '☑️ Multi-Select' : 
-             currentQuestion.type === 'truefalse' ? '✓ True/False' : '📝 Single Choice'}
-          </Text>
-        </View>
-
-        <Text style={styles.questionText}>{currentQuestion.question}</Text>
-
-        <View style={styles.choicesContainer}>
-          {Object.entries(currentQuestion.choices).map(([key, value]) => {
-            const isSelected = selectedChoices.includes(key);
-            return (
-              <TouchableOpacity
-                key={key}
-                style={[
-                  styles.choiceButton,
-                  isSelected && styles.choiceButtonSelected
-                ]}
-                onPress={() => handleChoiceSelect(key)}
-                activeOpacity={0.7}
-              >
-                <View style={[
-                  styles.choiceIndicator,
-                  isCheckbox ? styles.checkboxIndicator : styles.radioIndicator,
-                  isSelected && styles.indicatorSelected
-                ]}>
-                  {isSelected && (
-                    <Text style={styles.indicatorCheck}>
-                      {isCheckbox ? '✓' : '●'}
-                    </Text>
-                  )}
-                </View>
-                <Text style={[
-                  styles.choiceText,
-                  isSelected && styles.choiceTextSelected
-                ]}>
-                  <Text style={styles.choiceKey}>{key}.</Text> {value}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </ScrollView>
-
-      <View style={styles.navigationContainer}>
-        <TouchableOpacity
-          style={[styles.navButton, currentIndex === 0 && styles.navButtonDisabled]}
-          onPress={handlePrevious}
-          disabled={currentIndex === 0}
-          activeOpacity={0.7}
-        >
-          <Text style={[
-            styles.navButtonText, 
-            currentIndex === 0 && styles.navButtonTextDisabled
-          ]}>
-            ← Previous
-          </Text>
-        </TouchableOpacity>
-
-        {isLastQuestion ? (
-          <TouchableOpacity
-            style={styles.submitButton}
-            onPress={handleSubmit}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.submitButtonText}>Submit Quiz ✓</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={styles.nextButton}
-            onPress={handleNext}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.nextButtonText}>Next →</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </SafeAreaView>
-  );
-};
-
-// Results Screen Component
-const ResultsScreen = ({ score, highScore, onRestart, onGoHome }) => {
-  const percentage = Math.round((score / questions.length) * 100);
-  const isNewHighScore = score > (highScore || 0) || highScore === null;
-  
-  const getMessage = () => {
-    if (percentage === 100) return { emoji: '🏆', text: 'Perfect Score!' };
-    if (percentage >= 80) return { emoji: '🌟', text: 'Excellent!' };
-    if (percentage >= 60) return { emoji: '👍', text: 'Good Job!' };
-    if (percentage >= 40) return { emoji: '📚', text: 'Keep Learning!' };
-    return { emoji: '💪', text: 'Try Again!' };
-  };
-
-  const message = getMessage();
-
-  return (
-    <ScrollView 
-      style={styles.resultsScrollView}
-      contentContainerStyle={styles.resultsContainer}
-      showsVerticalScrollIndicator={false}
-    >
-      <Text style={styles.resultEmoji}>{message.emoji}</Text>
-      <Text style={styles.resultMessage}>{message.text}</Text>
-      
-      {isNewHighScore && (
-        <View style={styles.newHighScoreBadge}>
-          <Text style={styles.newHighScoreText}>🎉 New High Score!</Text>
-        </View>
-      )}
-
-      <View style={styles.scoreCard}>
-        <View style={styles.scoreSection}>
-          <Text style={styles.scoreLabelMain}>Your Score</Text>
-          <Text style={styles.scoreValueMain}>{score}/{questions.length}</Text>
-          <Text style={styles.percentageText}>{percentage}%</Text>
-        </View>
-        
-        <View style={styles.scoreDivider} />
-        
-        <View style={styles.scoreSection}>
-          <Text style={styles.scoreLabel}>🏆 Best Score</Text>
-          <Text style={styles.scoreValue}>
-            {Math.max(score, highScore || 0)}/{questions.length}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.breakdownCard}>
-        <View style={styles.breakdownItem}>
-          <Text style={styles.breakdownIconCorrect}>✓</Text>
-          <Text style={styles.breakdownText}>Correct: {score}</Text>
-        </View>
-        <View style={styles.breakdownItem}>
-          <Text style={styles.breakdownIconWrong}>✗</Text>
-          <Text style={styles.breakdownText}>Incorrect: {questions.length - score}</Text>
-        </View>
-      </View>
-
-      <View style={styles.resultButtons}>
-        <TouchableOpacity 
-          style={styles.restartButton} 
-          onPress={onRestart}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.restartButtonText}>🔄 Try Again</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.homeButton} 
-          onPress={onGoHome}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.homeButtonText}>🏠 Home</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
-  );
-};
-
-// Main App Component
-function App() {
-  const [screen, setScreen] = useState('home');
-  const [currentScore, setCurrentScore] = useState(0);
-  const [highScore, setHighScore] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-
+  // Timer Effect
   useEffect(() => {
-    loadHighScore();
-  }, []);
-
-  const loadHighScore = async () => {
-    try {
-      const saved = await AsyncStorage.getItem('quizHighScore');
-      if (saved !== null) {
-        setHighScore(parseInt(saved, 10));
-      }
-    } catch (error) {
-      console.log('Error loading high score:', error);
-    } finally {
-      setIsLoading(false);
+    let interval = null;
+    if (quizStarted && !showResult) {
+      interval = setInterval(() => {
+        setTimeLeft((prevTime) => {
+          if (prevTime <= 1) {
+            clearInterval(interval);
+            setAutoSubmitFlag(true);
+            return 0;
+          }
+          return prevTime - 1;
+        });
+      }, 1000);
     }
-  };
+    return () => clearInterval(interval);
+  }, [quizStarted, showResult]);
 
-  const saveHighScore = async (score) => {
-    try {
-      if (highScore === null || score > highScore) {
-        await AsyncStorage.setItem('quizHighScore', score.toString());
-        setHighScore(score);
-      }
-    } catch (error) {
-      console.log('Error saving high score:', error);
+  // Reset timer when duration changes
+  useEffect(() => {
+    setTimeLeft(timerDuration);
+  }, [timerDuration]);
+
+  // When autoSubmitFlag is set by the timer, run the final scoring
+  useEffect(() => {
+    if (autoSubmitFlag) {
+      // inline scoring to avoid stale dependency warnings
+      let correctCount = 0;
+      questions.forEach((q) => {
+        if (selectedAnswers[q.id] === q.correctAnswer) {
+          correctCount++;
+        }
+      });
+      setScore(correctCount);
+      setShowResult(true);
+      setQuizStarted(false);
+      setAutoSubmitFlag(false);
     }
+  }, [autoSubmitFlag, questions, selectedAnswers]);
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const handleStartQuiz = () => {
-    setScreen('quiz');
-  };
-
-  const handleFinishQuiz = (score, answers) => {
-    setCurrentScore(score);
-    saveHighScore(score);
-    setScreen('results');
-  };
-
-  const handleRestart = () => {
-    setCurrentScore(0);
-    setScreen('quiz');
-  };
-
-  const handleGoHome = () => {
-    if (screen === 'quiz') {
+  const startQuiz = () => {
+    if (questions.length === 0) {
       Alert.alert(
-        'Leave Quiz?',
-        'Your progress will be lost.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Leave', style: 'destructive', onPress: () => setScreen('home') }
-        ]
+        "No Questions",
+        "Please add questions in Quiz Settings first.",
       );
-    } else {
-      setScreen('home');
+      return;
+    }
+    setQuizStarted(true);
+    setCurrentQuestion(0);
+    setSelectedAnswers({});
+    setShowResult(false);
+    setScore(0);
+    setTimeLeft(timerDuration);
+  };
+
+  const selectAnswer = (questionId, answerIndex) => {
+    setSelectedAnswers({
+      ...selectedAnswers,
+      [questionId]: answerIndex,
+    });
+  };
+
+  const nextQuestion = () => {
+    if (currentQuestion < questions.length - 1) {
+      setCurrentQuestion(currentQuestion + 1);
     }
   };
 
-  if (isLoading) {
+  const prevQuestion = () => {
+    if (currentQuestion > 0) {
+      setCurrentQuestion(currentQuestion - 1);
+    }
+  };
+  const submitQuiz = () => {
+    Alert.alert("Submit Quiz", "Are you sure you want to submit?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Submit", onPress: calculateScore },
+    ]);
+  };
+
+  const resetQuiz = () => {
+    setQuizStarted(false);
+    setCurrentQuestion(0);
+    setSelectedAnswers({});
+    setShowResult(false);
+    setScore(0);
+    setTimeLeft(timerDuration);
+  };
+
+  // Start Screen
+  if (!quizStarted && !showResult) {
     return (
       <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#1a1a2e" />
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingEmoji}>🧠</Text>
-          <Text style={styles.loadingText}>Loading...</Text>
+        <View style={styles.startContainer}>
+          <Ionicons name="help-circle" size={80} color="#4A90D9" />
+          <Text style={styles.title}>Quiz Preview</Text>
+          <Text style={styles.subtitle}>
+            {questions.length} Questions | {formatTime(timerDuration)} Timer
+          </Text>
+          <TouchableOpacity style={styles.startButton} onPress={startQuiz}>
+            <Text style={styles.startButtonText}>Start Quiz</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
   }
 
+  // Result Screen
+  if (showResult) {
+    const percentage =
+      questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.resultContainer}>
+          <Ionicons
+            name={percentage >= 70 ? "trophy" : "sad"}
+            size={80}
+            color={percentage >= 70 ? "#FFD700" : "#FF6B6B"}
+          />
+          <Text style={styles.resultTitle}>Quiz Completed!</Text>
+          <Text style={styles.scoreText}>
+            Your Score: {score}/{questions.length}
+          </Text>
+          <Text style={styles.percentageText}>{percentage}%</Text>
+          <Text style={styles.feedbackText}>
+            {percentage >= 70 ? "Great job!" : "Keep practicing!"}
+          </Text>
+
+          {/* Review Answers */}
+          <ScrollView style={styles.reviewContainer}>
+            <Text style={styles.reviewTitle}>Review Answers:</Text>
+            {questions.map((q, index) => (
+              <View key={q.id} style={styles.reviewItem}>
+                <Text style={styles.reviewQuestion}>
+                  {index + 1}. {q.question}
+                </Text>
+                <Text
+                  style={[
+                    styles.reviewAnswer,
+                    selectedAnswers[q.id] === q.correctAnswer
+                      ? styles.correctAnswer
+                      : styles.wrongAnswer,
+                  ]}
+                >
+                  Your answer:{" "}
+                  {q.options[selectedAnswers[q.id]] || "Not answered"}
+                </Text>
+                {selectedAnswers[q.id] !== q.correctAnswer && (
+                  <Text style={styles.correctAnswerText}>
+                    Correct: {q.options[q.correctAnswer]}
+                  </Text>
+                )}
+              </View>
+            ))}
+          </ScrollView>
+
+          <TouchableOpacity style={styles.retryButton} onPress={resetQuiz}>
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Quiz Screen
+  const currentQ = questions[currentQuestion];
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#1a1a2e" />
-      {screen === 'home' && (
-        <HomeScreen onStartQuiz={handleStartQuiz} highScore={highScore} />
-      )}
-      {screen === 'quiz' && (
-        <QuizScreen onFinish={handleFinishQuiz} onGoHome={handleGoHome} />
-      )}
-      {screen === 'results' && (
-        <ResultsScreen
-          score={currentScore}
-          highScore={highScore}
-          onRestart={handleRestart}
-          onGoHome={handleGoHome}
+      {/* Timer */}
+      <View
+        style={[
+          styles.timerContainer,
+          timeLeft <= 30 && styles.timerWarning,
+          timeLeft <= 10 && styles.timerCritical,
+        ]}
+      >
+        <Ionicons
+          name="time"
+          size={24}
+          color={timeLeft <= 10 ? "#FF0000" : "#4A90D9"}
         />
-      )}
+        <Text
+          style={[styles.timerText, timeLeft <= 10 && styles.timerTextCritical]}
+        >
+          {formatTime(timeLeft)}
+        </Text>
+      </View>
+
+      {/* Progress */}
+      <View style={styles.progressContainer}>
+        <View style={styles.progressBar}>
+          <View
+            style={[
+              styles.progressFill,
+              { width: `${((currentQuestion + 1) / questions.length) * 100}%` },
+            ]}
+          />
+        </View>
+        <Text style={styles.progressText}>
+          Question {currentQuestion + 1} of {questions.length}
+        </Text>
+      </View>
+
+      {/* Question */}
+      <View style={styles.questionContainer}>
+        <Text style={styles.questionText}>{currentQ.question}</Text>
+      </View>
+
+      {/* Options */}
+      <View style={styles.optionsContainer}>
+        {currentQ.options.map((option, index) => (
+          <TouchableOpacity
+            key={index}
+            style={[
+              styles.optionButton,
+              selectedAnswers[currentQ.id] === index && styles.selectedOption,
+            ]}
+            onPress={() => selectAnswer(currentQ.id, index)}
+          >
+            <View
+              style={[
+                styles.optionCircle,
+                selectedAnswers[currentQ.id] === index && styles.selectedCircle,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.optionLetter,
+                  selectedAnswers[currentQ.id] === index &&
+                    styles.selectedLetter,
+                ]}
+              >
+                {String.fromCharCode(65 + index)}
+              </Text>
+            </View>
+            <Text
+              style={[
+                styles.optionText,
+                selectedAnswers[currentQ.id] === index &&
+                  styles.selectedOptionText,
+              ]}
+            >
+              {option}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Navigation Buttons */}
+      <View style={styles.navContainer}>
+        <TouchableOpacity
+          style={[
+            styles.navButton,
+            currentQuestion === 0 && styles.disabledButton,
+          ]}
+          onPress={prevQuestion}
+          disabled={currentQuestion === 0}
+        >
+          <Ionicons name="chevron-back" size={20} color="#FFF" />
+          <Text style={styles.navButtonText}>Previous</Text>
+        </TouchableOpacity>
+
+        {currentQuestion === questions.length - 1 ? (
+          <TouchableOpacity style={styles.submitButton} onPress={submitQuiz}>
+            <Text style={styles.submitButtonText}>Submit</Text>
+            <Ionicons name="checkmark" size={20} color="#FFF" />
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={styles.navButton} onPress={nextQuestion}>
+            <Text style={styles.navButtonText}>Next</Text>
+            <Ionicons name="chevron-forward" size={20} color="#FFF" />
+          </TouchableOpacity>
+        )}
+      </View>
     </SafeAreaView>
   );
 }
 
-// Styles
-const { width, height } = Dimensions.get('window');
+// ==================== QUIZ SETTINGS TAB ====================
+function QuizSettings() {
+  const { questions, setQuestions, timerDuration, setTimerDuration } =
+    useContext(QuizContext);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editingQuestion, setEditingQuestion] = useState(null);
+  const [questionText, setQuestionText] = useState("");
+  const [options, setOptions] = useState(["", "", "", ""]);
+  const [correctAnswer, setCorrectAnswer] = useState(0);
+  const [timerInput, setTimerInput] = useState(String(timerDuration / 60));
 
+  const openAddModal = () => {
+    setEditingQuestion(null);
+    setQuestionText("");
+    setOptions(["", "", "", ""]);
+    setCorrectAnswer(0);
+    setModalVisible(true);
+  };
+
+  const openEditModal = (question) => {
+    setEditingQuestion(question);
+    setQuestionText(question.question);
+    setOptions([...question.options]);
+    setCorrectAnswer(question.correctAnswer);
+    setModalVisible(true);
+  };
+
+  const saveQuestion = () => {
+    if (!questionText.trim()) {
+      Alert.alert("Error", "Please enter a question.");
+      return;
+    }
+    if (options.some((opt) => !opt.trim())) {
+      Alert.alert("Error", "Please fill all options.");
+      return;
+    }
+
+    if (editingQuestion) {
+      // Edit existing question
+      setQuestions(
+        questions.map((q) =>
+          q.id === editingQuestion.id
+            ? { ...q, question: questionText, options, correctAnswer }
+            : q,
+        ),
+      );
+    } else {
+      // Add new question
+      const newQuestion = {
+        id: Date.now().toString(),
+        question: questionText,
+        options,
+        correctAnswer,
+      };
+      setQuestions([...questions, newQuestion]);
+    }
+    setModalVisible(false);
+  };
+
+  const deleteQuestion = (id) => {
+    Alert.alert(
+      "Delete Question",
+      "Are you sure you want to delete this question?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => setQuestions(questions.filter((q) => q.id !== id)),
+        },
+      ],
+    );
+  };
+
+  const updateOption = (index, value) => {
+    const newOptions = [...options];
+    newOptions[index] = value;
+    setOptions(newOptions);
+  };
+
+  const updateTimer = () => {
+    const minutes = parseInt(timerInput) || 1;
+    setTimerDuration(minutes * 60);
+    Alert.alert("Success", `Timer set to ${minutes} minute(s)`);
+  };
+
+  const renderQuestionItem = ({ item, index }) => (
+    <View style={styles.questionItem}>
+      <View style={styles.questionItemHeader}>
+        <View style={styles.questionNumber}>
+          <Text style={styles.questionNumberText}>{index + 1}</Text>
+        </View>
+        <Text style={styles.questionItemText} numberOfLines={2}>
+          {item.question}
+        </Text>
+      </View>
+      <View style={styles.questionItemActions}>
+        <TouchableOpacity
+          style={styles.editButton}
+          onPress={() => openEditModal(item)}
+        >
+          <Ionicons name="pencil" size={18} color="#4A90D9" />
+          <Text style={styles.editButtonText}>Edit</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={() => deleteQuestion(item.id)}
+        >
+          <Ionicons name="trash" size={18} color="#FF6B6B" />
+          <Text style={styles.deleteButtonText}>Delete</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <ScrollView>
+        {/* Timer Settings */}
+        <View style={styles.settingsSection}>
+          <Text style={styles.sectionTitle}>
+            <Ionicons name="time" size={20} color="#4A90D9" /> Quiz Timer
+          </Text>
+          <View style={styles.timerSettingContainer}>
+            <TextInput
+              style={styles.timerInputField}
+              value={timerInput}
+              onChangeText={setTimerInput}
+              keyboardType="numeric"
+              placeholder="Minutes"
+            />
+            <Text style={styles.timerLabel}>minutes</Text>
+            <TouchableOpacity
+              style={styles.setTimerButton}
+              onPress={updateTimer}
+            >
+              <Text style={styles.setTimerButtonText}>Set Timer</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.currentTimerText}>
+            Current: {Math.floor(timerDuration / 60)} min {timerDuration % 60}{" "}
+            sec
+          </Text>
+        </View>
+
+        {/* Questions List */}
+        <View style={styles.settingsSection}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>
+              <Ionicons name="list" size={20} color="#4A90D9" /> Quiz Questions
+              ({questions.length})
+            </Text>
+            <TouchableOpacity style={styles.addButton} onPress={openAddModal}>
+              <Ionicons name="add" size={24} color="#FFF" />
+              <Text style={styles.addButtonText}>Add</Text>
+            </TouchableOpacity>
+          </View>
+
+          {questions.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="document-text-outline" size={50} color="#CCC" />
+              <Text style={styles.emptyStateText}>No questions yet</Text>
+              <Text style={styles.emptyStateSubtext}>
+                Tap the Add button to create your first question
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              data={questions}
+              renderItem={renderQuestionItem}
+              keyExtractor={(item) => item.id}
+              scrollEnabled={false}
+            />
+          )}
+        </View>
+      </ScrollView>
+
+      {/* Add/Edit Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <ScrollView>
+              <Text style={styles.modalTitle}>
+                {editingQuestion ? "Edit Question" : "Add New Question"}
+              </Text>
+
+              <Text style={styles.inputLabel}>Question</Text>
+              <TextInput
+                style={styles.textInput}
+                value={questionText}
+                onChangeText={setQuestionText}
+                placeholder="Enter your question"
+                multiline
+              />
+
+              <Text style={styles.inputLabel}>Options</Text>
+              {options.map((option, index) => (
+                <View key={index} style={styles.optionInputContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.correctIndicator,
+                      correctAnswer === index &&
+                        styles.correctIndicatorSelected,
+                    ]}
+                    onPress={() => setCorrectAnswer(index)}
+                  >
+                    <Ionicons
+                      name={
+                        correctAnswer === index
+                          ? "checkmark-circle"
+                          : "ellipse-outline"
+                      }
+                      size={24}
+                      color={correctAnswer === index ? "#4CAF50" : "#CCC"}
+                    />
+                  </TouchableOpacity>
+                  <TextInput
+                    style={styles.optionInput}
+                    value={option}
+                    onChangeText={(text) => updateOption(index, text)}
+                    placeholder={`Option ${String.fromCharCode(65 + index)}`}
+                  />
+                </View>
+              ))}
+              <Text style={styles.hintText}>
+                Tap the circle to mark the correct answer
+              </Text>
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={() => setModalVisible(false)}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.saveButton}
+                  onPress={saveQuestion}
+                >
+                  <Text style={styles.saveButtonText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
+}
+
+// ==================== TAB NAVIGATOR ====================
+const Tab = createBottomTabNavigator();
+
+export default function App() {
+  const [questions, setQuestions] = useState(defaultQuestions);
+  const [timerDuration, setTimerDuration] = useState(120); // 2 minutes default
+
+  return (
+    <QuizContext.Provider
+      value={{ questions, setQuestions, timerDuration, setTimerDuration }}
+    >
+      <NavigationContainer>
+        <Tab.Navigator
+          screenOptions={({ route }) => ({
+            tabBarIcon: ({ focused, color, size }) => {
+              let iconName;
+              if (route.name === "Preview Quiz") {
+                iconName = focused ? "play-circle" : "play-circle-outline";
+              } else if (route.name === "Quiz Settings") {
+                iconName = focused ? "settings" : "settings-outline";
+              }
+              return <Ionicons name={iconName} size={size} color={color} />;
+            },
+            tabBarActiveTintColor: "#4A90D9",
+            tabBarInactiveTintColor: "gray",
+            headerStyle: {
+              backgroundColor: "#4A90D9",
+            },
+            headerTintColor: "#fff",
+            headerTitleStyle: {
+              fontWeight: "bold",
+            },
+          })}
+        >
+          <Tab.Screen name="Preview Quiz" component={PreviewQuiz} />
+          <Tab.Screen name="Quiz Settings" component={QuizSettings} />
+        </Tab.Navigator>
+      </NavigationContainer>
+    </QuizContext.Provider>
+  );
+}
+
+// ==================== STYLES ====================
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a2e',
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+    backgroundColor: "#F5F7FA",
   },
-  loadingContainer: {
+
+  // Start Screen Styles
+  startContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingEmoji: {
-    fontSize: 60,
-    marginBottom: 16,
-  },
-  loadingText: {
-    color: '#ffffff',
-    fontSize: 18,
-  },
-  homeContainer: {
-    flex: 1,
-    padding: 24,
-    justifyContent: 'center',
-  },
-  heroSection: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  emoji: {
-    fontSize: 80,
-    marginBottom: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
   },
   title: {
     fontSize: 32,
-    fontWeight: 'bold',
-    color: '#ffffff',
-    marginBottom: 8,
-    textAlign: 'center',
+    fontWeight: "bold",
+    color: "#333",
+    marginTop: 20,
   },
   subtitle: {
-    fontSize: 18,
-    color: '#a0a0a0',
-    textAlign: 'center',
-  },
-  statsCard: {
-    backgroundColor: '#252541',
-    borderRadius: 20,
-    padding: 24,
-    alignItems: 'center',
-    marginBottom: 32,
-    borderWidth: 1,
-    borderColor: '#3a3a5a',
-  },
-  statsLabel: {
     fontSize: 16,
-    color: '#ffd700',
-    marginBottom: 8,
-  },
-  statsValue: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#ffffff',
-    marginBottom: 4,
-  },
-  statsSubtext: {
-    fontSize: 14,
-    color: '#888',
+    color: "#666",
+    marginTop: 10,
+    marginBottom: 30,
   },
   startButton: {
-    backgroundColor: '#6c5ce7',
-    borderRadius: 16,
-    padding: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 32,
-    shadowColor: '#6c5ce7',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 8,
+    backgroundColor: "#4A90D9",
+    paddingHorizontal: 50,
+    paddingVertical: 15,
+    borderRadius: 30,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
   startButtonText: {
-    color: '#ffffff',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginRight: 8,
-  },
-  startButtonIcon: {
-    color: '#ffffff',
-    fontSize: 24,
-  },
-  infoSection: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  infoItem: {
-    alignItems: 'center',
-  },
-  infoIcon: {
-    fontSize: 24,
-    marginBottom: 4,
-  },
-  infoText: {
-    color: '#888',
-    fontSize: 12,
-  },
-  quizContainer: {
-    flex: 1,
-    backgroundColor: '#1a1a2e',
-  },
-  quizHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    paddingTop: 8,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#2a2a4a',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backButtonText: {
-    color: '#ffffff',
+    color: "#FFF",
     fontSize: 18,
+    fontWeight: "bold",
   },
-  questionCounter: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
+
+  // Timer Styles
+  timerContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 15,
+    backgroundColor: "#E3F2FD",
+    margin: 10,
+    borderRadius: 10,
   },
-  answeredCounter: {
-    color: '#4ade80',
-    fontSize: 14,
-    fontWeight: '600',
+  timerWarning: {
+    backgroundColor: "#FFF3E0",
   },
+  timerCritical: {
+    backgroundColor: "#FFEBEE",
+  },
+  timerText: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#4A90D9",
+    marginLeft: 10,
+  },
+  timerTextCritical: {
+    color: "#FF0000",
+  },
+
+  // Progress Styles
   progressContainer: {
-    height: 6,
-    backgroundColor: '#2a2a4a',
-    marginHorizontal: 16,
-    borderRadius: 3,
-    overflow: 'hidden',
+    paddingHorizontal: 20,
+    marginBottom: 10,
   },
   progressBar: {
-    height: '100%',
-    backgroundColor: '#6c5ce7',
-    borderRadius: 3,
+    height: 8,
+    backgroundColor: "#E0E0E0",
+    borderRadius: 4,
+    overflow: "hidden",
   },
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#4A90D9",
+    borderRadius: 4,
+  },
+  progressText: {
+    textAlign: "center",
+    marginTop: 8,
+    color: "#666",
+    fontSize: 14,
+  },
+
+  // Question Styles
   questionContainer: {
-    flex: 1,
+    backgroundColor: "#FFF",
+    margin: 15,
     padding: 20,
-  },
-  typeBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#2a2a4a',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginBottom: 20,
-  },
-  typeBadgeText: {
-    color: '#a0a0a0',
-    fontSize: 12,
+    borderRadius: 15,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.22,
+    shadowRadius: 2.22,
   },
   questionText: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginBottom: 28,
-    lineHeight: 32,
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#333",
+    lineHeight: 26,
   },
-  choicesContainer: {
-    paddingBottom: 20,
+
+  // Options Styles
+  optionsContainer: {
+    paddingHorizontal: 15,
   },
-  choiceButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#252541',
-    borderRadius: 16,
-    padding: 18,
+  optionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFF",
+    padding: 15,
+    marginVertical: 6,
+    borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#3a3a5a',
-    marginBottom: 12,
+    borderColor: "#E0E0E0",
   },
-  choiceButtonSelected: {
-    borderColor: '#6c5ce7',
-    backgroundColor: '#2d2a4a',
+  selectedOption: {
+    borderColor: "#4A90D9",
+    backgroundColor: "#E3F2FD",
   },
-  choiceIndicator: {
-    width: 28,
-    height: 28,
-    marginRight: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#4a4a6a',
+  optionCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#F5F5F5",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
   },
-  radioIndicator: {
-    borderRadius: 14,
+  selectedCircle: {
+    backgroundColor: "#4A90D9",
   },
-  checkboxIndicator: {
-    borderRadius: 6,
+  optionLetter: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#666",
   },
-  indicatorSelected: {
-    borderColor: '#6c5ce7',
-    backgroundColor: '#6c5ce7',
+  selectedLetter: {
+    color: "#FFF",
   },
-  indicatorCheck: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  choiceText: {
+  optionText: {
     flex: 1,
     fontSize: 16,
-    color: '#e0e0e0',
-    lineHeight: 22,
+    color: "#333",
   },
-  choiceTextSelected: {
-    color: '#ffffff',
+  selectedOptionText: {
+    color: "#4A90D9",
+    fontWeight: "600",
   },
-  choiceKey: {
-    fontWeight: 'bold',
-    color: '#6c5ce7',
-  },
-  navigationContainer: {
-    flexDirection: 'row',
-    padding: 16,
-    gap: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#2a2a4a',
+
+  // Navigation Styles
+  navContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    padding: 15,
+    marginTop: "auto",
   },
   navButton: {
-    flex: 1,
-    backgroundColor: '#2a2a4a',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-  },
-  navButtonDisabled: {
-    opacity: 0.5,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#4A90D9",
+    paddingHorizontal: 25,
+    paddingVertical: 12,
+    borderRadius: 25,
   },
   navButtonText: {
-    color: '#ffffff',
+    color: "#FFF",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
+    marginHorizontal: 5,
   },
-  navButtonTextDisabled: {
-    color: '#666',
-  },
-  nextButton: {
-    flex: 1,
-    backgroundColor: '#6c5ce7',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-  },
-  nextButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: 'bold',
+  disabledButton: {
+    backgroundColor: "#B0BEC5",
   },
   submitButton: {
-    flex: 1,
-    backgroundColor: '#4ade80',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#4CAF50",
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    borderRadius: 25,
   },
   submitButtonText: {
-    color: '#1a1a2e',
+    color: "#FFF",
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: "bold",
+    marginRight: 5,
   },
-  resultsScrollView: {
+
+  // Result Styles
+  resultContainer: {
     flex: 1,
-    backgroundColor: '#1a1a2e',
+    padding: 20,
+    alignItems: "center",
   },
-  resultsContainer: {
-    flexGrow: 1,
-    padding: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    minHeight: height - 100,
+  resultTitle: {
+    fontSize: 28,
+    fontWeight: "bold",
+    color: "#333",
+    marginTop: 15,
   },
-  resultEmoji: {
-    fontSize: 80,
-    marginBottom: 16,
-  },
-  resultMessage: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#ffffff',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  newHighScoreBadge: {
-    backgroundColor: '#ffd700',
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginBottom: 24,
-  },
-  newHighScoreText: {
-    color: '#1a1a2e',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  scoreCard: {
-    backgroundColor: '#252541',
-    borderRadius: 24,
-    padding: 24,
-    width: '100%',
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#3a3a5a',
-  },
-  scoreSection: {
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  scoreDivider: {
-    height: 1,
-    backgroundColor: '#3a3a5a',
-    marginVertical: 16,
-  },
-  scoreLabelMain: {
-    fontSize: 14,
-    color: '#888',
-    marginBottom: 8,
-  },
-  scoreValueMain: {
-    fontSize: 48,
-    fontWeight: 'bold',
-    color: '#6c5ce7',
+  scoreText: {
+    fontSize: 22,
+    color: "#666",
+    marginTop: 15,
   },
   percentageText: {
-    fontSize: 20,
-    color: '#ffffff',
-    marginTop: 4,
+    fontSize: 48,
+    fontWeight: "bold",
+    color: "#4A90D9",
+    marginVertical: 10,
   },
-  scoreLabel: {
+  feedbackText: {
+    fontSize: 18,
+    color: "#666",
+    marginBottom: 20,
+  },
+  reviewContainer: {
+    flex: 1,
+    width: "100%",
+    backgroundColor: "#FFF",
+    borderRadius: 15,
+    padding: 15,
+    marginBottom: 15,
+  },
+  reviewTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 15,
+  },
+  reviewItem: {
+    marginBottom: 15,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: "#EEE",
+  },
+  reviewQuestion: {
     fontSize: 14,
-    color: '#ffd700',
-    marginBottom: 8,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 5,
   },
-  scoreValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#ffffff',
+  reviewAnswer: {
+    fontSize: 14,
+    paddingVertical: 3,
   },
-  breakdownCard: {
-    flexDirection: 'row',
-    backgroundColor: '#252541',
-    borderRadius: 16,
-    padding: 20,
-    width: '100%',
-    marginBottom: 32,
-    justifyContent: 'space-around',
+  correctAnswer: {
+    color: "#4CAF50",
   },
-  breakdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  wrongAnswer: {
+    color: "#FF6B6B",
   },
-  breakdownIconCorrect: {
-    fontSize: 20,
-    marginRight: 8,
-    color: '#4ade80',
+  correctAnswerText: {
+    fontSize: 13,
+    color: "#4CAF50",
+    fontStyle: "italic",
   },
-  breakdownIconWrong: {
-    fontSize: 20,
-    marginRight: 8,
-    color: '#f87171',
+  retryButton: {
+    backgroundColor: "#4A90D9",
+    paddingHorizontal: 50,
+    paddingVertical: 15,
+    borderRadius: 30,
   },
-  breakdownText: {
-    color: '#ffffff',
-    fontSize: 16,
+  retryButtonText: {
+    color: "#FFF",
+    fontSize: 18,
+    fontWeight: "bold",
   },
-  resultButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
+
+  // Settings Styles
+  settingsSection: {
+    backgroundColor: "#FFF",
+    margin: 15,
+    padding: 15,
+    borderRadius: 15,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.22,
+    shadowRadius: 2.22,
   },
-  restartButton: {
-    flex: 1,
-    backgroundColor: '#6c5ce7',
-    borderRadius: 16,
-    padding: 18,
-    alignItems: 'center',
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 15,
   },
-  restartButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: 'bold',
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 15,
   },
-  homeButton: {
-    flex: 1,
-    backgroundColor: '#2a2a4a',
-    borderRadius: 16,
-    padding: 18,
-    alignItems: 'center',
+  timerSettingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  timerInputField: {
     borderWidth: 1,
-    borderColor: '#3a3a5a',
-  },
-  homeButtonText: {
-    color: '#ffffff',
+    borderColor: "#DDD",
+    borderRadius: 8,
+    padding: 10,
+    width: 80,
     fontSize: 16,
-    fontWeight: 'bold',
+    textAlign: "center",
+  },
+  timerLabel: {
+    marginLeft: 10,
+    fontSize: 16,
+    color: "#666",
+  },
+  setTimerButton: {
+    backgroundColor: "#4A90D9",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginLeft: "auto",
+  },
+  setTimerButtonText: {
+    color: "#FFF",
+    fontWeight: "600",
+  },
+  currentTimerText: {
+    marginTop: 10,
+    color: "#888",
+    fontSize: 13,
+  },
+  addButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#4CAF50",
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  addButtonText: {
+    color: "#FFF",
+    fontWeight: "600",
+    marginLeft: 5,
+  },
+  emptyState: {
+    alignItems: "center",
+    paddingVertical: 30,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: "#999",
+    marginTop: 10,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: "#BBB",
+    marginTop: 5,
+  },
+  questionItem: {
+    backgroundColor: "#F8F9FA",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+    borderLeftWidth: 4,
+    borderLeftColor: "#4A90D9",
+  },
+  questionItemHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  questionNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#4A90D9",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
+  },
+  questionNumberText: {
+    color: "#FFF",
+    fontWeight: "bold",
+    fontSize: 14,
+  },
+  questionItemText: {
+    flex: 1,
+    fontSize: 14,
+    color: "#333",
+    lineHeight: 20,
+  },
+  questionItemActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: 10,
+  },
+  editButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginRight: 10,
+  },
+  editButtonText: {
+    color: "#4A90D9",
+    marginLeft: 4,
+    fontWeight: "600",
+  },
+  deleteButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  deleteButtonText: {
+    color: "#FF6B6B",
+    marginLeft: 4,
+    fontWeight: "600",
+  },
+
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: "#FFF",
+    borderRadius: 20,
+    padding: 20,
+    maxHeight: "85%",
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: "#333",
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#666",
+    marginBottom: 8,
+    marginTop: 10,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: "#DDD",
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: "#F9F9F9",
+    minHeight: 60,
+  },
+  optionInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  correctIndicator: {
+    padding: 5,
+  },
+  correctIndicatorSelected: {
+    // Selected state handled by icon color
+  },
+  optionInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#DDD",
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: "#F9F9F9",
+    marginLeft: 10,
+  },
+  hintText: {
+    fontSize: 12,
+    color: "#888",
+    fontStyle: "italic",
+    textAlign: "center",
+    marginVertical: 10,
+  },
+  modalButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 20,
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    marginRight: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#DDD",
+    alignItems: "center",
+  },
+  cancelButtonText: {
+    color: "#666",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  saveButton: {
+    flex: 1,
+    paddingVertical: 12,
+    marginLeft: 10,
+    borderRadius: 10,
+    backgroundColor: "#4CAF50",
+    alignItems: "center",
+  },
+  saveButtonText: {
+    color: "#FFF",
+    fontSize: 16,
+    fontWeight: "bold",
   },
 });
-
-// Register the app
-registerRootComponent(App);
